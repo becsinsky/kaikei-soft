@@ -3399,6 +3399,7 @@ select.form-control {
 // ストレージ管理
 // ============================================================
 const STORAGE_KEY = 'accounting_app_data_2026';
+const DRAFT_STORAGE_KEY = 'accounting_app_draft_2026';
 
 function loadData() {
     try {
@@ -3413,6 +3414,95 @@ function loadData() {
 function saveData(data) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 }
+
+function loadDraft() {
+    try {
+        const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
+        if (!raw) return null;
+        return JSON.parse(raw);
+    } catch (e) {
+        return null;
+    }
+}
+
+function saveDraft(draft) {
+    try {
+        localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
+    } catch (e) {}
+}
+
+function clearDraft() {
+    try {
+        localStorage.removeItem(DRAFT_STORAGE_KEY);
+    } catch (e) {}
+}
+
+function saveCurrentFormDraft() {
+    const receiptForm = document.getElementById('receiptForm');
+    if (!receiptForm) return;
+    const tagCbs = document.querySelectorAll('#formTagSelection input[type="checkbox"]:checked');
+    const tags = Array.from(tagCbs).map(cb => cb.value);
+    const draft = {
+        date: document.getElementById('inputDate')?.value || '',
+        account: document.getElementById('inputAccount')?.value || '',
+        amount: document.getElementById('inputAmount')?.value || '',
+        paymentMethod: document.getElementById('inputPayment')?.value || '',
+        ratio: document.getElementById('inputRatio')?.value || '100',
+        description: document.getElementById('inputDesc')?.value || '',
+        tags: tags
+    };
+    saveDraft(draft);
+}
+
+function restoreFormDraft() {
+    const draft = loadDraft();
+    if (!draft) return;
+
+    if (draft.date) {
+        const elDate = document.getElementById('inputDate');
+        if (elDate) elDate.value = draft.date;
+    }
+    if (draft.account) {
+        const elAcc = document.getElementById('inputAccount');
+        if (elAcc) elAcc.value = draft.account;
+    }
+    if (draft.amount !== undefined && draft.amount !== '') {
+        const elAmt = document.getElementById('inputAmount');
+        if (elAmt) elAmt.value = draft.amount;
+    }
+    if (draft.paymentMethod) {
+        const elPay = document.getElementById('inputPayment');
+        if (elPay) elPay.value = draft.paymentMethod;
+    }
+    if (draft.ratio !== undefined && draft.ratio !== '') {
+        const elRatio = document.getElementById('inputRatio');
+        if (elRatio) elRatio.value = draft.ratio;
+    }
+    if (draft.description !== undefined) {
+        const elDesc = document.getElementById('inputDesc');
+        if (elDesc) elDesc.value = draft.description;
+    }
+    if (draft.tags && Array.isArray(draft.tags)) {
+        document.querySelectorAll('#formTagSelection input[type="checkbox"]').forEach(cb => {
+            cb.checked = draft.tags.includes(cb.value);
+        });
+    }
+    updateAmountPreview();
+}
+
+function initDraftListeners() {
+    const receiptForm = document.getElementById('receiptForm');
+    if (!receiptForm) return;
+    receiptForm.querySelectorAll('input, select, textarea').forEach(el => {
+        el.addEventListener('input', saveCurrentFormDraft);
+        el.addEventListener('change', saveCurrentFormDraft);
+    });
+    const tagSelection = document.getElementById('formTagSelection');
+    if (tagSelection) {
+        tagSelection.addEventListener('change', saveCurrentFormDraft);
+    }
+}
+
 
 // ============================================================
 // パスワード保護機能（固定パスワード方式）
@@ -4406,6 +4496,45 @@ function loadSalary() {
     calcSalarySheet();
 }
 
+function attachAutoSaveListeners() {
+    const invIds = ['invFxProfit', 'invFxExpense', 'invCryptoProfit', 'invCryptoExpense', 'invStockProfit', 'invStockDividend', 'invBondInterest', 'invBondGain'];
+    invIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('input', () => {
+                state.investment = {
+                    fxProfit: parseFloat(document.getElementById('invFxProfit').value) || 0,
+                    fxExpense: parseFloat(document.getElementById('invFxExpense').value) || 0,
+                    cryptoProfit: parseFloat(document.getElementById('invCryptoProfit').value) || 0,
+                    cryptoExpense: parseFloat(document.getElementById('invCryptoExpense').value) || 0,
+                    stockProfit: parseFloat(document.getElementById('invStockProfit').value) || 0,
+                    stockDividend: parseFloat(document.getElementById('invStockDividend').value) || 0,
+                    bondInterest: parseFloat(document.getElementById('invBondInterest').value) || 0,
+                    bondGain: parseFloat(document.getElementById('invBondGain').value) || 0
+                };
+                persist();
+            });
+        }
+    });
+
+    const salIds = ['salaryMonthly', 'salaryMonths', 'salarySummerBonus', 'salaryWinterBonus', 'salaryOther'];
+    salIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('input', () => {
+                state.salary = {
+                    monthly: parseFloat(document.getElementById('salaryMonthly').value) || 0,
+                    months: parseInt(document.getElementById('salaryMonths').value) || 12,
+                    summerBonus: parseFloat(document.getElementById('salarySummerBonus').value) || 0,
+                    winterBonus: parseFloat(document.getElementById('salaryWinterBonus').value) || 0,
+                    other: parseFloat(document.getElementById('salaryOther').value) || 0
+                };
+                persist();
+            });
+        }
+    });
+}
+
 // ============================================================
 // イベントリスナー登録
 // ============================================================
@@ -4426,6 +4555,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadInvestment();
     loadSalary();
     renderTrash();
+    attachAutoSaveListeners();
     
     // タブ切り替え
     document.querySelectorAll('.tab-nav .tab-btn').forEach(btn => {
@@ -4454,6 +4584,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const dateInput = document.getElementById('inputDate');
     if (dateInput) dateInput.value = today();
+
+    // ドラフト（下書き）の復元と自動保存イベントの設定
+    restoreFormDraft();
+    initDraftListeners();
 
     const receiptForm = document.getElementById('receiptForm');
     if (receiptForm) {
@@ -4485,7 +4619,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 addEntry(formData);
                 showToast('登録しました ✓', 'success');
             }
-            persist(); renderRecentTable(); renderJournalTable(); renderPL();
+            persist();
+            clearDraft();
+            renderRecentTable(); renderJournalTable(); renderPL();
             receiptForm.reset(); if (dateInput) dateInput.value = today();
             updateAmountPreview();
         });
@@ -4494,7 +4630,9 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btnClearForm')?.addEventListener('click', () => {
         document.getElementById('receiptForm')?.reset();
         if (dateInput) dateInput.value = today();
-        clearEditMode(); updateAmountPreview();
+        clearEditMode();
+        clearDraft();
+        updateAmountPreview();
     });
 
     document.getElementById('btnFilter')?.addEventListener('click', () => {
